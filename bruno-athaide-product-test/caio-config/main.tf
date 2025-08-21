@@ -14,16 +14,16 @@ module "shared" {
   source = "../shared"
 }
 
-# variable "configcat_username" {
-#   description = "ConfigCat Basic Auth Username"
-#   type        = string
-# }
+variable "configcat_basic_auth_username" {
+  description = "ConfigCat Basic Auth Username"
+  type        = string
+}
 
-# variable "configcat_password" {
-#   description = "ConfigCat Basic Auth Password"
-#   type        = string
-#   sensitive   = true
-# }
+variable "configcat_basic_auth_password" {
+  description = "ConfigCat Basic Auth Password"
+  type        = string
+  sensitive   = true
+}
 
 provider "configcat" {
   # Usando as variáveis de ambiente que você já tem configuradas
