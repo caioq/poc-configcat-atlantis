@@ -17,12 +17,14 @@ module "shared" {
 variable "configcat_basic_auth_username" {
   description = "ConfigCat Basic Auth Username"
   type        = string
+  default     = ""
 }
 
 variable "configcat_basic_auth_password" {
   description = "ConfigCat Basic Auth Password"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 provider "configcat" {
