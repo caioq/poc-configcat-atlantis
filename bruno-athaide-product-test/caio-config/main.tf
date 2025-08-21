@@ -26,7 +26,7 @@ variable "configcat_basic_auth_password" {
 }
 
 provider "configcat" {
-  # Usando as variáveis de ambiente que você já tem configuradas
-  basic_auth_username = var.configcat_basic_auth_username
-  basic_auth_password = var.configcat_basic_auth_password
+  # Use environment variables directly
+  basic_auth_username = var.configcat_basic_auth_username != "" ? var.configcat_basic_auth_username : null
+  basic_auth_password = var.configcat_basic_auth_password != "" ? var.configcat_basic_auth_password : null
 }
