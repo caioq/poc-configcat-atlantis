@@ -16,6 +16,6 @@ module "shared" {
 
 provider "configcat" {
   # Usando as variáveis de ambiente que você já tem configuradas
-  basic_auth_username = var.configcat_username
-  basic_auth_password = var.configcat_password
+  basic_auth_username = var.configcat_basic_auth_username
+  basic_auth_password = var.configcat_basic_auth_password
 }
