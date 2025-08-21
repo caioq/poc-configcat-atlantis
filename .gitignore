@@ -1,0 +1,5 @@
+# Visual Studio
+.DS_Store
+
+**/.terraform
+.terraform.lock.hcl
