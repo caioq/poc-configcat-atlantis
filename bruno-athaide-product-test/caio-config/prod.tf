@@ -82,32 +82,20 @@ resource "configcat_setting_value" "max_items_per_page_value" {
   value = "50"
 }
 
-// JSON type feature flag - Complex configuration object
+// String type feature flag - UI configuration (JSON-like data stored as string)
 resource "configcat_setting" "ui_configuration" {
   config_id = data.configcat_configs.my_configs.configs.0.config_id
   key = "uiConfiguration"
   name = "UI Configuration"
-  hint = "Complex JSON configuration for UI components"
-  setting_type = "json"
+  hint = "JSON-like configuration for UI components stored as string"
+  setting_type = "string"
   order = 5
 }
 
 resource "configcat_setting_value" "ui_configuration_value" {
   environment_id = data.configcat_environments.my_environments.environments.0.environment_id
   setting_id = configcat_setting.ui_configuration.id
-  value = jsonencode({
-    theme = "dark"
-    layout = "sidebar"
-    features = {
-      search = true
-      filters = true
-      export = false
-    }
-    limits = {
-      maxResults = 100
-      timeout = 30
-    }
-  })
+  value = "{\"theme\":\"dark\",\"layout\":\"sidebar\",\"features\":{\"search\":true,\"filters\":true,\"export\":false},\"limits\":{\"maxResults\":100,\"timeout\":30}}"
 }
 
 // Advanced String type - HTML content
@@ -158,45 +146,20 @@ resource "configcat_setting_value" "feature_limits_value" {
   value = "1000"
 }
 
-// Advanced JSON type - Nested configuration with arrays
+// String type feature flag - Advanced configuration (JSON-like data stored as string)
 resource "configcat_setting" "advanced_config" {
   config_id = data.configcat_configs.my_configs.configs.0.config_id
   key = "advancedConfiguration"
   name = "Advanced System Configuration"
-  hint = "Complex nested configuration with arrays and objects"
-  setting_type = "json"
+  hint = "Complex nested configuration stored as JSON string"
+  setting_type = "string"
   order = 9
 }
 
 resource "configcat_setting_value" "advanced_config_value" {
   environment_id = data.configcat_environments.my_environments.environments.0.environment_id
   setting_id = configcat_setting.advanced_config.id
-  value = jsonencode({
-    api = {
-      version = "v2"
-      endpoints = [
-        "/users",
-        "/products",
-        "/orders"
-      ]
-      rateLimit = {
-        requests = 1000
-        window = "1h"
-      }
-    }
-    cache = {
-      enabled = true
-      ttl = 3600
-      strategies = ["lru", "ttl"]
-    }
-    monitoring = {
-      metrics = ["cpu", "memory", "disk"]
-      alerts = {
-        cpu_threshold = 80
-        memory_threshold = 85
-      }
-    }
-  })
+  value = "{\"api\":{\"version\":\"v2\",\"endpoints\":[\"/users\",\"/products\",\"/orders\"],\"rateLimit\":{\"requests\":1000,\"window\":\"1h\"}},\"cache\":{\"enabled\":true,\"ttl\":3600,\"strategies\":[\"lru\",\"ttl\"]},\"monitoring\":{\"metrics\":[\"cpu\",\"memory\",\"disk\"],\"alerts\":{\"cpu_threshold\":80,\"memory_threshold\":85}}}"
 }
 
 // Edge case: Very long string value
@@ -215,64 +178,18 @@ resource "configcat_setting_value" "long_description_value" {
   value = "This is a very long description that tests the maximum length limits of ConfigCat string settings. It contains multiple sentences and should help validate how the system handles large text content. We're testing various edge cases including special characters, numbers, and punctuation marks. The goal is to understand the limitations and behavior of the Terraform provider when dealing with complex string values."
 }
 
-// Edge case: Very large JSON object
-resource "configcat_setting" "large_json_config" {
+// String type feature flag - Large configuration (JSON-like data stored as string)
+resource "configcat_setting" "large_config" {
   config_id = data.configcat_configs.my_configs.configs.0.config_id
-  key = "largeJsonConfiguration"
-  name = "Large JSON Configuration"
-  hint = "Testing very large JSON objects"
-  setting_type = "json"
+  key = "largeConfiguration"
+  name = "Large Configuration"
+  hint = "Testing very large configuration strings"
+  setting_type = "string"
   order = 11
 }
 
-resource "configcat_setting_value" "large_json_config_value" {
+resource "configcat_setting_value" "large_config_value" {
   environment_id = data.configcat_environments.my_environments.environments.0.environment_id
-  setting_id = configcat_setting.large_json_config.id
-  value = jsonencode({
-    data = {
-      users = {
-        fields = ["id", "name", "email", "role", "created_at", "updated_at", "last_login", "status", "preferences", "metadata"]
-        validation = {
-          required = ["id", "name", "email"]
-          email_format = true
-          name_min_length = 2
-          name_max_length = 100
-        }
-      }
-      products = {
-        fields = ["id", "name", "description", "price", "category", "tags", "inventory", "supplier", "ratings", "reviews"]
-        validation = {
-          required = ["id", "name", "price"]
-          price_min = 0.01
-          price_max = 999999.99
-        }
-      }
-      orders = {
-        fields = ["id", "user_id", "items", "total", "status", "created_at", "shipping_address", "billing_address", "payment_method", "notes"]
-        validation = {
-          required = ["id", "user_id", "items", "total"]
-          total_min = 0.01
-        }
-      }
-    }
-    settings = {
-      pagination = {
-        default_page_size = 20
-        max_page_size = 100
-        page_size_options = [10, 20, 50, 100]
-      }
-      search = {
-        enabled = true
-        min_query_length = 2
-        max_results = 1000
-        highlight = true
-      }
-      notifications = {
-        email = true
-        push = true
-        sms = false
-        webhook = true
-      }
-    }
-  })
+  setting_id = configcat_setting.large_config.id
+  value = "{\"data\":{\"users\":{\"fields\":[\"id\",\"name\",\"email\",\"role\",\"created_at\",\"updated_at\",\"last_login\",\"status\",\"preferences\",\"metadata\"],\"validation\":{\"required\":[\"id\",\"name\",\"email\"],\"email_format\":true,\"name_min_length\":2,\"name_max_length\":100}},\"products\":{\"fields\":[\"id\",\"name\",\"description\",\"price\",\"category\",\"tags\",\"inventory\",\"supplier\",\"ratings\",\"reviews\"],\"validation\":{\"required\":[\"id\",\"name\",\"price\"],\"price_min\":0.01,\"price_max\":999999.99}},\"orders\":{\"fields\":[\"id\",\"user_id\",\"items\",\"total\",\"status\",\"created_at\",\"shipping_address\",\"billing_address\",\"payment_method\",\"notes\"],\"validation\":{\"required\":[\"id\",\"user_id\",\"items\",\"total\"],\"total_min\":0.01}}},\"settings\":{\"pagination\":{\"default_page_size\":20,\"max_page_size\":100,\"page_size_options\":[10,20,50,100]},\"search\":{\"enabled\":true,\"min_query_length\":2,\"max_results\":1000,\"highlight\":true},\"notifications\":{\"email\":true,\"push\":true,\"sms\":false,\"webhook\":true}}}"
 }
