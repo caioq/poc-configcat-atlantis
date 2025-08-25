@@ -16,18 +16,22 @@ terraform {
 #   source = "./.."
 # }
 
-module "shared" {
+module "shared_product" {
   source = "../../shared"
 }
 
+module "shared_config" {
+  source = "../shared"
+}
+
 data "configcat_products" "my_products" {
-  name_filter_regex = module.shared.product_name
+  name_filter_regex = module.shared_product.product_name
 }
 
 # TODO: Try to use the config name as a variable
 data "configcat_configs" "my_configs" {
   product_id = data.configcat_products.my_products.products.0.product_id
-  name_filter_regex = "POC Config V3"
+  name_filter_regex = module.shared_config.config_name
 }
 
 

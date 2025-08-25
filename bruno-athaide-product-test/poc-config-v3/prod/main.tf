@@ -17,6 +17,11 @@ module "segments" {
   source = "../../segments"
 }
 
+data "configcat_segments" "beta_users_segment" {
+  product_id = module.parent_config.product_id
+  name_filter_regex = "Beta users"
+}
+
 # Get production environment from parent
 data "configcat_environments" "prod_environment" {
   product_id = module.parent_config.product_id
