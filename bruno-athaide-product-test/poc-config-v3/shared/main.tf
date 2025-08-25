@@ -15,10 +15,10 @@ terraform {
 
 # Local values for shared configuration
 locals {
-  # Product configuration - single source of truth
-  product_name = "Bruno Athaide Product Test"
+  config_name = "POC Config V3"
+}
 
-  # Add other shared values here as needed
-  # environment = "production"
-  # region = "us-east-1"
+output "config_name" {
+  description = "The config name from shared configuration"
+  value       = local.config_name
 }
