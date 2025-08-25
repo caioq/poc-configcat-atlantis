@@ -1,6 +1,6 @@
 # Create string setting
 resource "configcat_setting" "my_string_setting_v2" {
-  config_id    = configcat_config.my_config.id
+  config_id    = module.parent_config.config_id
   key          = "StringSettingKey"
   name         = "String setting"
   order        = 0

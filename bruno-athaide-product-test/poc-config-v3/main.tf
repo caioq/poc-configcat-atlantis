@@ -42,3 +42,14 @@ data "configcat_environments" "prod_environment" {
   product_id = data.configcat_products.my_products.products.0.product_id
   name_filter_regex = "Production"
 }
+
+# Outputs for child modules
+output "config_id" {
+  description = "The config ID from the config resource"
+  value       = configcat_config.my_config.id
+}
+
+output "product_id" {
+  description = "The product ID from the products data source"
+  value       = data.configcat_products.my_products.products.0.product_id
+}
