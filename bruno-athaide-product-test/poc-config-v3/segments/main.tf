@@ -37,3 +37,9 @@ provider "configcat" {
   basic_auth_username = var.configcat_basic_auth_username != "" ? var.configcat_basic_auth_username : null
   basic_auth_password = var.configcat_basic_auth_password != "" ? var.configcat_basic_auth_password : null
 }
+
+# Outputs for other modules to reference
+output "beta_users_segment_id" {
+  description = "The ID of the beta users segment"
+  value       = configcat_segment.my_segment.id
+}

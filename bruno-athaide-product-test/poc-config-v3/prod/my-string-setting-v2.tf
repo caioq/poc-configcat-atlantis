@@ -27,5 +27,15 @@ resource "configcat_setting_value_v2" "string_setting_value" {
       ]
       value = { string_value = "custom" }
     },
+    {
+      conditions = [
+        {
+          segment_condition = {
+            segment_id = module.segments.beta_users_segment_id
+          }
+        },
+      ]
+      value = { string_value = "beta-feature" }
+    },
   ]
 }
