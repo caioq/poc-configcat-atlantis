@@ -205,6 +205,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             const fs = require('fs');
             const results = JSON.parse(fs.readFileSync('metadata_results.json', 'utf8'));
