@@ -1,0 +1,222 @@
+name: Parse Terraform Files (Simple)
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Every Monday at 9 AM
+  workflow_dispatch: # Manual trigger
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.tfvars"
+    types: [opened, synchronize, reopened]
+
+jobs:
+  parse-terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Parse Terraform Files
+        id: parse
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const glob = require('glob');
+
+          function findTerraformFiles() {
+            return glob.sync('**/*.tf', { ignore: ['**/node_modules/**', '**/.terraform/**'] });
+          }
+
+          function parseTerraformFile(filePath) {
+            console.log(`📁 Parsing: ${filePath}`);
+
+            try {
+              const content = fs.readFileSync(filePath, 'utf8');
+              const flags = [];
+
+              // Find all configcat_setting resources
+              const settingRegex = /resource\s+"configcat_setting"\s+"([^"]+)"\s*\{([^}]+)\}/gs;
+              let match;
+
+              while ((match = settingRegex.exec(content)) !== null) {
+                const [, resourceName, resourceContent] = match;
+
+                // Extract key information using regex
+                const keyMatch = resourceContent.match(/key\s*=\s*"([^"]+)"/);
+                const nameMatch = resourceContent.match(/name\s*=\s*"([^"]+)"/);
+                const typeMatch = resourceContent.match(/setting_type\s*=\s*"([^"]+)"/);
+                const hintMatch = resourceContent.match(/hint\s*=\s*"([^"]+)"/);
+                const notesMatch = resourceContent.match(/mandatory_notes\s*=\s*"([^"]+)"/);
+
+                if (keyMatch) {
+                  const flag = {
+                    file: filePath,
+                    resourceName,
+                    key: keyMatch[1],
+                    name: nameMatch ? nameMatch[1] : 'N/A',
+                    type: typeMatch ? typeMatch[1] : 'N/A',
+                    hint: hintMatch ? hintMatch[1] : '',
+                    notes: notesMatch ? notesMatch[1] : '',
+                    metadata: null
+                  };
+
+                  // Check for metadata in notes
+                  if (flag.notes && flag.notes.includes('METADATA:')) {
+                    const metadataMatch = flag.notes.match(/METADATA:\s*(\{.*?\})/);
+                    if (metadataMatch) {
+                      try {
+                        flag.metadata = JSON.parse(metadataMatch[1]);
+                        console.log(`  ✅ Found metadata in ${flag.key}:`, flag.metadata);
+                      } catch (e) {
+                        console.log(`  ⚠️  Invalid JSON in metadata for ${flag.key}: ${e.message}`);
+                      }
+                    }
+                  }
+
+                  // Check hint for metadata if notes don't have it
+                  if (!flag.metadata && flag.hint && flag.hint.includes('METADATA:')) {
+                    const hintMetadataMatch = flag.hint.match(/METADATA:\s*(\{.*?\})/);
+                    if (hintMetadataMatch) {
+                      try {
+                        flag.metadata = JSON.parse(hintMetadataMatch[1]);
+                        console.log(`  ✅ Found metadata in hint for ${flag.key}:`, flag.metadata);
+                      } catch (e) {
+                        console.log(`  ⚠️  Invalid JSON in hint for ${flag.key}: ${e.message}`);
+                      }
+                    }
+                  }
+
+                  flags.push(flag);
+                }
+              }
+
+              return flags;
+            } catch (error) {
+              console.log(`  ❌ Error parsing ${filePath}: ${error.message}`);
+              return [];
+            }
+          }
+
+          // Main execution
+          const allFiles = findTerraformFiles();
+          let allFlags = [];
+          let metadataFlags = [];
+
+          allFiles.forEach(file => {
+            const flags = parseTerraformFile(file);
+            allFlags = allFlags.concat(flags);
+
+            flags.forEach(flag => {
+              if (flag.metadata) {
+                metadataFlags.push(flag);
+              }
+            });
+          });
+
+          // Output summary
+          console.log(`\\n📊 Summary:`);
+          console.log(`  Total feature flags found: ${allFlags.length}`);
+          console.log(`  Flags with metadata: ${metadataFlags.length}`);
+
+          // Set outputs
+          console.log(`::set-output name=total_flags::${allFlags.length}`);
+          console.log(`::set-output name=metadata_flags::${metadataFlags.length}`);
+
+          // Save results
+          const results = {
+            summary: {
+              total_flags: allFlags.length,
+              metadata_flags: metadataFlags.length,
+              timestamp: new Date().toISOString(),
+              files_parsed: allFiles.length
+            },
+            all_flags: allFlags,
+            metadata_flags: metadataFlags
+          };
+
+          fs.writeFileSync('feature_flags_analysis.json', JSON.stringify(results, null, 2));
+
+          // Generate markdown report
+          let markdown = `# Feature Flags Analysis Report\\n\\n`;
+          markdown += `**Generated:** ${new Date().toISOString()}\\n`;
+          markdown += `**Files Parsed:** ${allFiles.length}\\n`;
+          markdown += `**Total Flags:** ${allFlags.length}\\n`;
+          markdown += `**Flags with Metadata:** ${metadataFlags.length}\\n\\n`;
+
+          if (metadataFlags.length > 0) {
+            markdown += `## 🚩 Flags with Metadata\\n\\n`;
+            metadataFlags.forEach(flag => {
+              markdown += `### ${flag.key}\\n`;
+              markdown += `- **Name:** ${flag.name}\\n`;
+              markdown += `- **Type:** ${flag.type}\\n`;
+              markdown += `- **File:** ${flag.file}\\n`;
+              markdown += `- **Metadata:** \\`\\`\\`json\\n${JSON.stringify(flag.metadata, null, 2)}\\n\\`\\`\\`\\n\\n`;
+            });
+          } else {
+            markdown += `## ℹ️ No Metadata Found\\n\\nNo feature flags with metadata were found.\\n\\n`;
+          }
+
+          markdown += `## 📋 All Feature Flags\\n\\n`;
+          allFlags.forEach(flag => {
+            markdown += `- **${flag.key}** (${flag.type}) - ${flag.name}\\n`;
+          });
+
+          fs.writeFileSync('feature_flags_report.md', markdown);
+
+          console.log('📄 Reports generated:');
+          console.log('  - feature_flags_analysis.json');
+          console.log('  - feature_flags_report.md');
+
+      - name: Upload Analysis Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-feature-flags-analysis
+          path: |
+            feature_flags_analysis.json
+            feature_flags_report.md
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            try {
+              const analysis = JSON.parse(fs.readFileSync('feature_flags_analysis.json', 'utf8'));
+
+              let comment = `## 🚩 Terraform Feature Flags Analysis\n\n`;
+              comment += `**Files Parsed:** ${analysis.summary.files_parsed}\n`;
+              comment += `**Total Flags Found:** ${analysis.summary.total_flags}\n`;
+              comment += `**Flags with Metadata:** ${analysis.summary.metadata_flags}\n\n`;
+
+              if (analysis.metadata_flags.length > 0) {
+                comment += `### 📋 Flags with Metadata:\n\n`;
+                analysis.metadata_flags.forEach(flag => {
+                  comment += `- **${flag.key}** (${flag.type})\n`;
+                  comment += `  - Name: ${flag.name}\n`;
+                  comment += `  - File: \`${flag.file}\`\n`;
+                  comment += `  - Metadata: \`\`\`json\n${JSON.stringify(flag.metadata, null, 2)}\n\`\`\`\n\n`;
+                });
+              } else {
+                comment += `### ℹ️ No metadata found\n\nNo feature flags with metadata were detected in this PR.`;
+              }
+
+              comment += `\n\n---\n*Generated by Terraform File Parser*`;
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (error) {
+              console.error('Error creating comment:', error);
+            }
