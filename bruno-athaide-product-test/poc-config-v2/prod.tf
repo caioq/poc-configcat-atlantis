@@ -1,6 +1,6 @@
 # Create string setting
 resource "configcat_setting" "my_string_setting_v2" {
-  config_id    = configcat_config.my_config.id
+  config_id    = local.config_id
   key          = "StringSettingKey"
   name         = "String setting"
   order        = 2
@@ -32,7 +32,7 @@ resource "configcat_setting_value_v2" "string_setting_value" {
 
 # Create boolean setting
 resource "configcat_setting" "my_bool_setting_v2" {
-  config_id    = configcat_config.my_config.id
+  config_id    = local.config_id
   key          = "BoolSettingKey"
   name         = "Bool feature flag"
   order        = 1
@@ -72,7 +72,7 @@ resource "configcat_setting_value_v2" "bool_setting_value" {
         },
         {
           segment_condition = {
-            segment_id = configcat_segment.my_segment.id
+            segment_id = local.segment_id
             comparator = "isIn"
           }
         },
@@ -127,7 +127,7 @@ resource "configcat_setting_value_v2" "bool_setting_value" {
 
 # Create feature flag with extra metadata fields
 resource "configcat_setting" "metadata_test_flag" {
-  config_id    = configcat_config.my_config.id
+  config_id    = local.config_id
   key          = "metadataTestFlag"
   name         = "Metadata Test Feature Flag"
   hint         = "Testing extra metadata fields like expiry_date and active status"
@@ -163,7 +163,7 @@ resource "configcat_setting_value_v2" "metadata_test_flag_value" {
 
 # Create another setting to test different metadata approaches
 resource "configcat_setting" "advanced_metadata_flag" {
-  config_id    = configcat_config.my_config.id
+  config_id    = local.config_id
   key          = "advancedMetadataFlag"
   name         = "Advanced Metadata Feature Flag"
   hint         = "Testing various metadata field approaches"
@@ -199,7 +199,7 @@ resource "configcat_setting_value_v2" "advanced_metadata_flag_value" {
 
 # Create experimental metadata test setting
 resource "configcat_setting" "experimental_metadata_flag" {
-  config_id    = configcat_config.my_config.id
+  config_id    = local.config_id
   key          = "experimentalMetadataFlag"
   name         = "Experimental Metadata Feature Flag"
   hint         = "Testing experimental metadata fields to discover provider capabilities"
@@ -235,7 +235,7 @@ resource "configcat_setting_value_v2" "experimental_metadata_flag_value" {
 
 # Create a setting specifically for testing expiry and active metadata
 resource "configcat_setting" "expiry_active_test_flag" {
-  config_id    = configcat_config.my_config.id
+  config_id    = local.config_id
   key          = "expiryActiveTestFlag"
   name         = "Expiry and Active Test Feature Flag"
   hint         = "Testing expiry_date and active properties specifically"

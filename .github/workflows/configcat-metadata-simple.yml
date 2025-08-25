@@ -1,0 +1,247 @@
+name: ConfigCat Metadata Checker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * *" # Daily at 8 AM UTC
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  check-metadata:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Extract ConfigCat Metadata
+        env:
+          CONFIGCAT_USERNAME: ${{ secrets.CONFIGCAT_USERNAME }}
+          CONFIGCAT_PASSWORD: ${{ secrets.CONFIGCAT_PASSWORD }}
+        run: |
+          node -e "
+          const https = require('https');
+
+          // ConfigCat API configuration
+          const config = {
+            username: process.env.CONFIGCAT_USERNAME,
+            password: process.env.CONFIGCAT_PASSWORD,
+            productId: '08ddc62b-f5b3-46de-86fb-342d26c74a4d',
+            configId: '08ddd116-c60d-4fb3-8eca-6b46df96c21c',
+            environmentId: '08ddc62c-0cc2-43e7-8f61-400953081bfe'
+          };
+
+          // Helper function to make HTTP requests
+          function makeRequest(url, options = {}) {
+            return new Promise((resolve, reject) => {
+              const req = https.request(url, {
+                auth: config.username + ':' + config.password,
+                ...options
+              }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  try {
+                    resolve(JSON.parse(data));
+                  } catch (e) {
+                    resolve(data);
+                  }
+                });
+              });
+              req.on('error', reject);
+              req.end();
+            });
+          }
+
+          // Main function to extract metadata
+          async function extractMetadata() {
+            try {
+              console.log('🔍 Fetching ConfigCat feature flags...');
+
+              // Get all settings
+              const settingsUrl = \`https://api.configcat.com/v1/products/\${config.productId}/configs/\${config.configId}/settings\`;
+              const settings = await makeRequest(settingsUrl);
+
+              const metadataResults = [];
+              const expiredFlags = [];
+              const activeFlags = [];
+
+              for (const setting of settings) {
+                const settingId = setting.settingId;
+                const settingKey = setting.key;
+                const settingName = setting.name;
+
+                try {
+                  // Get setting value for the environment
+                  const valueUrl = \`https://api.configcat.com/v1/products/\${config.productId}/configs/\${config.configId}/settings/\${settingId}/values/\${config.environmentId}\`;
+                  const valueData = await makeRequest(valueUrl);
+
+                  const mandatoryNotes = valueData.mandatoryNotes || '';
+
+                  // Extract metadata using regex
+                  const metadataMatch = mandatoryNotes.match(/METADATA:\s*(\{.*?\})/);
+                  if (metadataMatch) {
+                    try {
+                      const metadata = JSON.parse(metadataMatch[1]);
+
+                      metadataResults.push({
+                        key: settingKey,
+                        name: settingName,
+                        metadata: metadata
+                      });
+
+                      // Check expiry_date
+                      if (metadata.expiry_date) {
+                        const expiryDate = new Date(metadata.expiry_date);
+                        const now = new Date();
+
+                        if (expiryDate < now) {
+                          expiredFlags.push({
+                            key: settingKey,
+                            name: settingName,
+                            expiry_date: metadata.expiry_date,
+                            days_expired: Math.floor((now - expiryDate) / (1000 * 60 * 60 * 24))
+                          });
+                        } else {
+                          const daysUntilExpiry = Math.floor((expiryDate - now) / (1000 * 60 * 60 * 24));
+                          activeFlags.push({
+                            key: settingKey,
+                            name: settingName,
+                            expiry_date: metadata.expiry_date,
+                            days_until_expiry: daysUntilExpiry,
+                            active: metadata.active
+                          });
+                        }
+                      }
+
+                      // Check active status
+                      if (metadata.active !== undefined) {
+                        console.log(\`📊 \${settingKey}: \${metadata.active ? 'ENABLED' : 'DISABLED'} (active: \${metadata.active})\`);
+                      }
+
+                    } catch (parseError) {
+                      console.log(\`⚠️  Invalid JSON in metadata for \${settingKey}: \${parseError.message}\`);
+                    }
+                  }
+
+                } catch (error) {
+                  console.log(\`⚠️  Error fetching value for \${settingKey}: \${error.message}\`);
+                }
+              }
+
+              // Print summary
+              console.log('\\n📋 Metadata Summary:');
+              console.log(\`   Total flags with metadata: \${metadataResults.length}\`);
+              console.log(\`   Expired flags: \${expiredFlags.length}\`);
+              console.log(\`   Active flags: \${activeFlags.length}\`);
+
+              // Print expired flags
+              if (expiredFlags.length > 0) {
+                console.log('\\n🚨 EXPIRED FEATURE FLAGS:');
+                expiredFlags.forEach(flag => {
+                  console.log(\`   ❌ \${flag.key} (\${flag.name}) - Expired: \${flag.expiry_date} (\${flag.days_expired} days ago)\`);
+                });
+              }
+
+              // Print active flags
+              if (activeFlags.length > 0) {
+                console.log('\\n✅ ACTIVE FEATURE FLAGS:');
+                activeFlags.forEach(flag => {
+                  const status = flag.active ? 'ENABLED' : 'DISABLED';
+                  console.log(\`   ✅ \${flag.key} (\${flag.name}) - \${status} - Expires: \${flag.expiry_date} (in \${flag.days_until_expiry} days)\`);
+                });
+              }
+
+              // Print all metadata
+              if (metadataResults.length > 0) {
+                console.log('\\n📊 ALL METADATA:');
+                metadataResults.forEach(flag => {
+                  console.log(\`   🔑 \${flag.key} (\${flag.name})\`);
+                  console.log(\`      Metadata: \${JSON.stringify(flag.metadata, null, 2)}\`);
+                  console.log();
+                });
+              }
+
+              // Set GitHub output variables
+              const fs = require('fs');
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, \`expired_count=\${expiredFlags.length}\\n\`);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, \`active_count=\${activeFlags.length}\\n\`);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, \`total_metadata=\${metadataResults.length}\\n\`);
+
+              // Save detailed results to file
+              fs.writeFileSync('metadata_results.json', JSON.stringify({
+                summary: {
+                  total_metadata_flags: metadataResults.length,
+                  expired_flags: expiredFlags.length,
+                  active_flags: activeFlags.length
+                },
+                expired_flags: expiredFlags,
+                active_flags: activeFlags,
+                all_metadata: metadataResults
+              }, null, 2));
+
+            } catch (error) {
+              console.error('❌ Error:', error.message);
+              process.exit(1);
+            }
+          }
+
+          extractMetadata();
+          "
+
+      - name: Upload metadata results
+        uses: actions/upload-artifact@v3
+        with:
+          name: configcat-metadata-results
+          path: metadata_results.json
+
+      - name: Create summary comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('metadata_results.json', 'utf8'));
+
+            let comment = '## 🔍 ConfigCat Feature Flag Metadata Check\n\n';
+            comment += `**Summary:** ${results.summary.total_metadata_flags} flags with metadata found\n`;
+            comment += `**Active:** ${results.summary.active_flags} | **Expired:** ${results.summary.expired_flags}\n\n`;
+
+            if (results.expired_flags.length > 0) {
+              comment += '### 🚨 Expired Flags\n';
+              results.expired_flags.forEach(flag => {
+                comment += `- \`${flag.key}\` - Expired ${flag.days_expired} days ago\n`;
+              });
+              comment += '\n';
+            }
+
+            if (results.active_flags.length > 0) {
+              comment += '### ✅ Active Flags\n';
+              results.active_flags.slice(0, 5).forEach(flag => { // Show first 5
+                const status = flag.active ? '🟢' : '🔴';
+                comment += `- ${status} \`${flag.key}\` - Expires in ${flag.days_until_expiry} days\n`;
+              });
+              if (results.active_flags.length > 5) {
+                comment += `- ... and ${results.active_flags.length - 5} more\n`;
+              }
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Fail if expired flags found
+        if: steps.check-metadata.outputs.expired_count > 0
+        run: |
+          echo "🚨 Found ${{ steps.check-metadata.outputs.expired_count }} expired feature flags!"
+          echo "Please review and update expired flags in ConfigCat."
+          exit 1

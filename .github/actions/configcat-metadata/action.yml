@@ -1,0 +1,215 @@
+name: "ConfigCat Metadata Extractor"
+description: "Extract and analyze metadata from ConfigCat feature flags"
+
+inputs:
+  username:
+    description: "ConfigCat Basic Auth Username"
+    required: true
+  password:
+    description: "ConfigCat Basic Auth Password"
+    required: true
+  product-id:
+    description: "ConfigCat Product ID"
+    required: true
+  config-id:
+    description: "ConfigCat Config ID"
+    required: true
+  environment-id:
+    description: "ConfigCat Environment ID"
+    required: true
+  fail-on-expired:
+    description: "Fail the workflow if expired flags are found"
+    required: false
+    default: "false"
+
+outputs:
+  expired-count:
+    description: "Number of expired feature flags"
+    value: ${{ steps.extract.outputs.expired_count }}
+  active-count:
+    description: "Number of active feature flags"
+    value: ${{ steps.extract.outputs.active_count }}
+  total-metadata:
+    description: "Total number of flags with metadata"
+    value: ${{ steps.extract.outputs.total_metadata }}
+  metadata-json:
+    description: "JSON string containing all metadata results"
+    value: ${{ steps.extract.outputs.metadata_json }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract ConfigCat Metadata
+      id: extract
+      shell: node
+      run: |
+        const https = require('https');
+
+        // Get inputs
+        const username = '${{ inputs.username }}';
+        const password = '${{ inputs.password }}';
+        const productId = '${{ inputs.product-id }}';
+        const configId = '${{ inputs.config-id }}';
+        const environmentId = '${{ inputs.environment-id }}';
+
+        // Helper function to make HTTP requests
+        function makeRequest(url, options = {}) {
+          return new Promise((resolve, reject) => {
+            const req = https.request(url, {
+              auth: username + ':' + password,
+              ...options
+            }, (res) => {
+              let data = '';
+              res.on('data', chunk => data += chunk);
+              res.on('end', () => {
+                try {
+                  resolve(JSON.parse(data));
+                } catch (e) {
+                  resolve(data);
+                }
+              });
+            });
+            req.on('error', reject);
+            req.end();
+          });
+        }
+
+        // Main function to extract metadata
+        async function extractMetadata() {
+          try {
+            console.log('🔍 Fetching ConfigCat feature flags...');
+
+            // Get all settings
+            const settingsUrl = `https://api.configcat.com/v1/products/${productId}/configs/${configId}/settings`;
+            const settings = await makeRequest(settingsUrl);
+
+            const metadataResults = [];
+            const expiredFlags = [];
+            const activeFlags = [];
+
+            for (const setting of settings) {
+              const settingId = setting.settingId;
+              const settingKey = setting.key;
+              const settingName = setting.name;
+
+              try {
+                // Get setting value for the environment
+                const valueUrl = `https://api.configcat.com/v1/products/${productId}/configs/${configId}/settings/${settingId}/values/${environmentId}`;
+                const valueData = await makeRequest(valueUrl);
+
+                const mandatoryNotes = valueData.mandatoryNotes || '';
+
+                // Extract metadata using regex
+                const metadataMatch = mandatoryNotes.match(/METADATA:\s*(\{.*?\})/);
+                if (metadataMatch) {
+                  try {
+                    const metadata = JSON.parse(metadataMatch[1]);
+
+                    metadataResults.push({
+                      key: settingKey,
+                      name: settingName,
+                      metadata: metadata
+                    });
+
+                    // Check expiry_date
+                    if (metadata.expiry_date) {
+                      const expiryDate = new Date(metadata.expiry_date);
+                      const now = new Date();
+
+                      if (expiryDate < now) {
+                        expiredFlags.push({
+                          key: settingKey,
+                          name: settingName,
+                          expiry_date: metadata.expiry_date,
+                          days_expired: Math.floor((now - expiryDate) / (1000 * 60 * 60 * 24))
+                        });
+                      } else {
+                        const daysUntilExpiry = Math.floor((expiryDate - now) / (1000 * 60 * 60 * 24));
+                        activeFlags.push({
+                          key: settingKey,
+                          name: settingName,
+                          expiry_date: metadata.expiry_date,
+                          days_until_expiry: daysUntilExpiry,
+                          active: metadata.active
+                        });
+                      }
+                    }
+
+                    // Check active status
+                    if (metadata.active !== undefined) {
+                      console.log(`📊 ${settingKey}: ${metadata.active ? 'ENABLED' : 'DISABLED'} (active: ${metadata.active})`);
+                    }
+
+                  } catch (parseError) {
+                    console.log(`⚠️  Invalid JSON in metadata for ${settingKey}: ${parseError.message}`);
+                  }
+                }
+
+              } catch (error) {
+                console.log(`⚠️  Error fetching value for ${settingKey}: ${error.message}`);
+              }
+            }
+
+            // Print summary
+            console.log('\n📋 Metadata Summary:');
+            console.log(`   Total flags with metadata: ${metadataResults.length}`);
+            console.log(`   Expired flags: ${expiredFlags.length}`);
+            console.log(`   Active flags: ${activeFlags.length}`);
+
+            // Print expired flags
+            if (expiredFlags.length > 0) {
+              console.log('\n🚨 EXPIRED FEATURE FLAGS:');
+              expiredFlags.forEach(flag => {
+                console.log(`   ❌ ${flag.key} (${flag.name}) - Expired: ${flag.expiry_date} (${flag.days_expired} days ago)`);
+              });
+            }
+
+            // Print active flags
+            if (activeFlags.length > 0) {
+              console.log('\n✅ ACTIVE FEATURE FLAGS:');
+              activeFlags.forEach(flag => {
+                const status = flag.active ? 'ENABLED' : 'DISABLED';
+                console.log(`   ✅ ${flag.key} (${flag.name}) - ${status} - Expires: ${flag.expiry_date} (in ${flag.days_until_expiry} days)`);
+              });
+            }
+
+            // Set outputs
+            const results = {
+              summary: {
+                total_metadata_flags: metadataResults.length,
+                expired_flags: expiredFlags.length,
+                active_flags: activeFlags.length
+              },
+              expired_flags: expiredFlags,
+              active_flags: activeFlags,
+              all_metadata: metadataResults
+            };
+
+            console.log(`::set-output name=expired_count::${expiredFlags.length}`);
+            console.log(`::set-output name=active_count::${activeFlags.length}`);
+            console.log(`::set-output name=total_metadata::${metadataResults.length}`);
+            console.log(`::set-output name=metadata_json::${JSON.stringify(results)}`);
+
+            // Save results to file
+            const fs = require('fs');
+            fs.writeFileSync('metadata_results.json', JSON.stringify(results, null, 2));
+
+            // Fail if expired flags found and fail-on-expired is true
+            if (expiredFlags.length > 0 && '${{ inputs.fail-on-expired }}' === 'true') {
+              console.log('\n🚨 Failing workflow due to expired flags found');
+              process.exit(1);
+            }
+
+          } catch (error) {
+            console.error('❌ Error:', error.message);
+            process.exit(1);
+          }
+        }
+
+        extractMetadata();
+
+    - name: Upload metadata results
+      uses: actions/upload-artifact@v3
+      with:
+        name: configcat-metadata-results
+        path: metadata_results.json
