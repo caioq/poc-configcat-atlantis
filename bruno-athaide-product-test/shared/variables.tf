@@ -1,17 +1,3 @@
-# variable "configcat_username" {
-#   description = "ConfigCat Basic Auth Username"
-#   type        = string
-#   default     = ""
-#   sensitive   = true
-# }
-
-# variable "configcat_password" {
-#   description = "ConfigCat Basic Auth Password"
-#   type        = string
-#   default     = ""
-#   sensitive   = true
-# }
-
 variable "configcat_product_name" {
   description = "ConfigCat Product Name"
   type        = string
@@ -27,4 +13,5 @@ variable "configcat_config_name" {
 variable "configcat_product_id" {
   description = "ConfigCat Product ID"
   type        = string
+  default     = ""  # Empty default - will be provided by calling modules
 }
