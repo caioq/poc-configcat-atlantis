@@ -12,11 +12,6 @@ module "parent_config" {
   source = "./.."
 }
 
-# Reference the segments module
-module "segments" {
-  source = "../segments"
-}
-
 # Get production environment from parent
 data "configcat_environments" "forno_environment" {
   product_id = module.parent_config.product_id

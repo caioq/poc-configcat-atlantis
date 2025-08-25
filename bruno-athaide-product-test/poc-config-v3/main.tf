@@ -7,9 +7,15 @@ terraform {
   }
 }
 
+# Get product ID first
+data "configcat_products" "my_products" {
+  name_filter_regex = module.shared.configcat_product_name
+}
+
 # Reference the shared module with product value
 module "shared" {
   source = "../shared"
+  configcat_product_id = data.configcat_products.my_products.products.0.product_id
 }
 
 variable "configcat_basic_auth_username" {
@@ -32,11 +38,6 @@ provider "configcat" {
   basic_auth_password = var.configcat_basic_auth_password != "" ? var.configcat_basic_auth_password : null
 }
 
-# Get product ID from shared module
-data "configcat_products" "my_products" {
-  name_filter_regex = module.shared.configcat_product_name
-}
-
 # Get production environment
 data "configcat_environments" "prod_environment" {
   product_id = data.configcat_products.my_products.products.0.product_id
@@ -52,4 +53,9 @@ output "config_id" {
 output "product_id" {
   description = "The product ID from the products data source"
   value       = data.configcat_products.my_products.products.0.product_id
+}
+
+output "shared" {
+  description = "The shared module outputs"
+  value       = module.shared
 }

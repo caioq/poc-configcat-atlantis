@@ -23,3 +23,8 @@ variable "configcat_config_name" {
   type        = string
   default     = "Caio Config"
 }
+
+variable "configcat_product_id" {
+  description = "ConfigCat Product ID"
+  type        = string
+}
