@@ -196,7 +196,7 @@ jobs:
           "
 
       - name: Upload metadata results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: configcat-metadata-results
           path: metadata_results.json
