@@ -1,6 +1,7 @@
 # Create a simple boolean feature flag
 resource "configcat_setting" "my_forno_ff" {
-  config_id    = module.parent_config.config_id
+  # config_id    = module.parent_config.config_id
+  config_id    = data.configcat_configs.my_configs.configs.0.config_id
   key          = "MyFornoFF"
   name         = "My Forno Feature Flag"
   order        = 1

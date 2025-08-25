@@ -53,3 +53,8 @@ output "product_id" {
   description = "The product ID from the products data source"
   value       = data.configcat_products.my_products.products.0.product_id
 }
+
+# module "forno" {
+#   source = "./forno"
+#   config_id = configcat_config.my_config.id
+# }
