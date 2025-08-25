@@ -21,6 +21,7 @@ module "product" {
 # Reference the segments module
 module "segments" {
   source = "../segments"
+  configcat_product_id = data.configcat_products.my_products.products.0.product_id
 }
 
 variable "configcat_basic_auth_username" {
@@ -58,11 +59,6 @@ output "config_id" {
 output "product_id" {
   description = "The product ID from the products data source"
   value       = data.configcat_products.my_products.products.0.product_id
-}
-
-output "shared" {
-  description = "The shared module outputs"
-  value       = module.shared
 }
 
 output "product" {

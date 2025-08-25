@@ -13,7 +13,8 @@ terraform {
   }
 }
 
-# Reference the product module to get the product_id
-module "product" {
-  source = "../product"
+# Variable for product ID - will be passed from calling modules
+variable "configcat_product_id" {
+  description = "ConfigCat Product ID"
+  type        = string
 }
