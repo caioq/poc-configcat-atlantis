@@ -18,12 +18,6 @@ module "product" {
   configcat_product_id = data.configcat_products.my_products.products.0.product_id
 }
 
-# Reference the segments module
-module "segments" {
-  source = "../segments"
-  configcat_product_id = data.configcat_products.my_products.products.0.product_id
-}
-
 variable "configcat_basic_auth_username" {
   description = "ConfigCat Basic Auth Username"
   type        = string
@@ -64,9 +58,4 @@ output "product_id" {
 output "product" {
   description = "The product module outputs"
   value       = module.product
-}
-
-output "segments" {
-  description = "The segments module outputs"
-  value       = module.segments
 }
