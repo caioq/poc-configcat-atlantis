@@ -32,6 +32,7 @@ resource "configcat_setting_value_v2" "string_setting_value" {
         {
           segment_condition = {
             segment_id = module.segments.beta_users_segment_id
+            comparator = "isIn"
           }
         },
       ]
