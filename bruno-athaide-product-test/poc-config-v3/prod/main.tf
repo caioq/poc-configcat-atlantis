@@ -7,24 +7,31 @@ terraform {
   }
 }
 
-# Reference the parent directory configuration
-module "parent_config" {
-  source = "./.."
+module "shared_product" {
+  source = "../../shared"
 }
 
-# Reference the segments module
-module "segments" {
-  source = "../../segments"
+module "shared_config" {
+  source = "../shared"
+}
+
+data "configcat_products" "my_products" {
+  name_filter_regex = module.shared_product.product_name
+}
+
+data "configcat_configs" "my_configs" {
+  product_id = data.configcat_products.my_products.products.0.product_id
+  name_filter_regex = module.shared_config.config_name
 }
 
 data "configcat_segments" "beta_users_segment" {
-  product_id = module.parent_config.product_id
+  product_id = data.configcat_products.my_products.products.0.product_id
   name_filter_regex = "Beta users"
 }
 
 # Get production environment from parent
 data "configcat_environments" "prod_environment" {
-  product_id = module.parent_config.product_id
+  product_id = data.configcat_products.my_products.products.0.product_id
   name_filter_regex = "Production"
 }
 
