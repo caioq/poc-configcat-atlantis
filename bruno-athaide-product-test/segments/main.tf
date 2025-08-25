@@ -1,8 +1,7 @@
 # =============================================================================
-# SHARED MODULE - NOT A STANDALONE TERRAFORM WORKSPACE
+# SEGMENTS MODULE
 # =============================================================================
-# This directory contains a Terraform module that should be called by other
-# modules. Do not run terraform commands directly in this directory.
+# This directory contains shared segments that can be used across the product
 # =============================================================================
 
 terraform {
@@ -12,4 +11,9 @@ terraform {
       version = "~> 5.0"
     }
   }
+}
+
+# Reference the product module to get the product_id
+module "product" {
+  source = "../product"
 }

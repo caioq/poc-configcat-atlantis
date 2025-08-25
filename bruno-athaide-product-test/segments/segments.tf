@@ -4,7 +4,7 @@
 
 # Beta users segment
 resource "configcat_segment" "beta_users" {
-  product_id           = var.configcat_product_id
+  product_id           = module.product.configcat_product_id
   name                 = "Beta users"
   description          = "Beta users' description"
   comparison_attribute = "email"
@@ -14,7 +14,7 @@ resource "configcat_segment" "beta_users" {
 
 # Add more segments here as needed
 # resource "configcat_segment" "premium_users" {
-#   product_id           = var.configcat_product_id
+#   product_id           = module.product.configcat_product_id
 #   name                 = "Premium users"
 #   description          = "Premium users segment"
 #   comparison_attribute = "subscription_tier"
