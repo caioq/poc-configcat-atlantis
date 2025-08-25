@@ -175,7 +175,7 @@ jobs:
           console.log('  - feature_flags_report.md');
 
       - name: Upload Analysis Results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: terraform-feature-flags-analysis
           path: |
