@@ -7,15 +7,14 @@ terraform {
   }
 }
 
-# Get product ID first
-data "configcat_products" "my_products" {
-  name_filter_regex = module.product.configcat_product_name
+# Reference the shared module to get the product name
+module "shared" {
+  source = "../shared"
 }
 
-# Reference the product module
-module "product" {
-  source = "../product"
-  configcat_product_id = data.configcat_products.my_products.products.0.product_id
+# Get product ID first
+data "configcat_products" "my_products" {
+  name_filter_regex = module.shared.product_name
 }
 
 variable "configcat_basic_auth_username" {
@@ -53,9 +52,4 @@ output "config_id" {
 output "product_id" {
   description = "The product ID from the products data source"
   value       = data.configcat_products.my_products.products.0.product_id
-}
-
-output "product" {
-  description = "The product module outputs"
-  value       = module.product
 }

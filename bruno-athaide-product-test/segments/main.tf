@@ -13,18 +13,14 @@ terraform {
   }
 }
 
-# Reference the product module to get the product name
-# This makes the product name truly reusable across all modules
-module "product" {
-  source = "../product"
-  # We need to provide a dummy product_id since it's required
-  # This will be overridden when segments is called as a module
-  configcat_product_id = "dummy-id"
+# Reference the shared module to get the product name
+module "shared" {
+  source = "../shared"
 }
 
-# Get product ID using the product name from the product module
+# Get product ID using the product name from shared configuration
 data "configcat_products" "my_products" {
-  name_filter_regex = module.product.configcat_product_name
+  name_filter_regex = module.shared.product_name
 }
 
 # Variables for authentication

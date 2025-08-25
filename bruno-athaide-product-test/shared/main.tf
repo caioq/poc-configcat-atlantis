@@ -1,7 +1,7 @@
 # =============================================================================
-# PRODUCT MODULE
+# SHARED MODULE
 # =============================================================================
-# This module contains product-level configuration
+# This module contains shared configuration values
 # =============================================================================
 
 terraform {
@@ -13,8 +13,12 @@ terraform {
   }
 }
 
-# Local variable for product name - single source of truth
-# To reuse this value in other modules, reference: module.product.configcat_product_name
+# Local values for shared configuration
 locals {
+  # Product configuration - single source of truth
   product_name = "Bruno Athaide Product Test"
+
+  # Add other shared values here as needed
+  # environment = "production"
+  # region = "us-east-1"
 }

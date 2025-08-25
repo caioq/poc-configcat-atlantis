@@ -1,3 +1,0 @@
-# This directory contains a Terraform module, not a standalone workspace
-# Atlantis should not attempt to run terraform commands here
-*
