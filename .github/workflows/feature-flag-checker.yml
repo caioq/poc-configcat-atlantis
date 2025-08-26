@@ -73,103 +73,111 @@ jobs:
                   with open(file_path, 'r') as f:
                       content = f.read()
 
-                  def find_matching_brace(text, start_pos):
-                      """Find the matching closing brace for an opening brace"""
-                      brace_count = 0
-                      i = start_pos
-                      while i < len(text):
-                          if text[i] == '{':
-                              brace_count += 1
-                          elif text[i] == '}':
-                              brace_count -= 1
-                              if brace_count == 0:
-                                  return i
-                          i += 1
-                      return -1
+                  print(f"DEBUG: File content length: {len(content)}")
 
                   # Find all configcat_setting resources
-                  setting_pattern = r'resource\s+"configcat_setting"\s+"([^"]+)"\s*\{'
+                  setting_pattern = r'resource\s+"configcat_setting"\s+"([^"]+)"'
+                  setting_matches = re.findall(setting_pattern, content)
+                  print(f"DEBUG: Found {len(setting_matches)} configcat_setting resources: {setting_matches}")
+
+                  # Find all configcat_setting_value_v2 resources
+                  value_pattern = r'resource\s+"configcat_setting_value_v2"\s+"([^"]+)"'
+                  value_matches = re.findall(value_pattern, content)
+                  print(f"DEBUG: Found {len(value_matches)} configcat_setting_value_v2 resources: {value_matches}")
+
                   feature_flags = []
 
-                  for setting_match in re.finditer(setting_pattern, content):
-                      setting_name = setting_match.group(1)
-                      start_pos = setting_match.end() - 1  # Position of opening brace
-                      end_pos = find_matching_brace(content, start_pos)
+                  # Simple approach - split by resource blocks
+                  resources = content.split('resource "')
 
-                      if end_pos == -1:
-                          continue
+                  for resource in resources:
+                      if resource.startswith('configcat_setting"'):
+                          lines = resource.split('\n')
+                          if len(lines) > 0:
+                              # Extract resource name from first line
+                              first_line = lines[0]
+                              name_match = re.search(r'configcat_setting"\s+"([^"]+)"', first_line)
+                              if name_match:
+                                  setting_name = name_match.group(1)
+                                  print(f"DEBUG: Processing setting: {setting_name}")
 
-                      setting_body = content[setting_match.end():end_pos]
+                                  # Check if it's boolean
+                                  resource_body = '\n'.join(lines)
+                                  if 'setting_type = "boolean"' in resource_body:
+                                      print(f"DEBUG: {setting_name} is a boolean feature flag")
 
-                      # Check if it's a boolean feature flag
-                      if 'setting_type = "boolean"' in setting_body:
-                          # Look for the key and name
-                          key_match = re.search(r'key\s*=\s*"([^"]+)"', setting_body)
-                          name_match = re.search(r'name\s*=\s*"([^"]+)"', setting_body)
+                                      # Extract key and name
+                                      key_match = re.search(r'key\s*=\s*"([^"]+)"', resource_body)
+                                      name_match = re.search(r'name\s*=\s*"([^"]+)"', resource_body)
 
-                          key = key_match.group(1) if key_match else "Unknown"
-                          name = name_match.group(1) if name_match else "Unknown"
+                                      key = key_match.group(1) if key_match else "Unknown"
+                                      name = name_match.group(1) if name_match else "Unknown"
 
-                          # Find corresponding setting_value_v2 resources
-                          value_pattern = r'resource\s+"configcat_setting_value_v2"\s+"([^"]+)"\s*\{'
+                                      # Now find corresponding value resources
+                                      found_values = False
+                                      for value_resource in resources:
+                                          if value_resource.startswith('configcat_setting_value_v2"'):
+                                              value_lines = value_resource.split('\n')
+                                              value_body = '\n'.join(value_lines)
 
-                          for value_match in re.finditer(value_pattern, content):
-                              value_name = value_match.group(1)
-                              value_start_pos = value_match.end() - 1  # Position of opening brace
-                              value_end_pos = find_matching_brace(content, value_start_pos)
+                                              # Check if this belongs to our setting
+                                              if f'setting_id = configcat_setting.{setting_name}.id' in value_body:
+                                                  found_values = True
+                                                  print(f"DEBUG: Found matching value resource for {setting_name}")
 
-                              if value_end_pos == -1:
-                                  continue
+                                                  # Extract value resource name
+                                                  value_first_line = value_lines[0] if value_lines else ""
+                                                  value_name_match = re.search(r'configcat_setting_value_v2"\s+"([^"]+)"', value_first_line)
+                                                  value_name = value_name_match.group(1) if value_name_match else "Unknown"
 
-                              value_body = content[value_match.end():value_end_pos]
+                                                  # Extract environment
+                                                  env_match = re.search(r'environment_id\s*=\s*([^\n]+)', value_body)
+                                                  env = env_match.group(1).strip() if env_match else "Unknown"
 
-                              # Check if this value belongs to our setting
-                              if f'setting_id = configcat_setting.{setting_name}.id' in value_body:
-                                  # Extract environment info
-                                  env_match = re.search(r'environment_id\s*=\s*([^\n]+)', value_body)
-                                  env = env_match.group(1).strip() if env_match else "Unknown"
+                                                  # Extract mandatory_notes
+                                                  notes_match = re.search(r'mandatory_notes\s*=\s*"([^"]*(?:\\.[^"]*)*)"', value_body)
+                                                  if notes_match:
+                                                      notes_value = notes_match.group(1)
+                                                      print(f"DEBUG: Found mandatory_notes: {notes_value}")
+                                                      parsed_notes = parse_mandatory_notes(notes_value)
 
-                                  # Extract mandatory_notes
-                                  notes_match = re.search(r'mandatory_notes\s*=\s*"([^"]*(?:\\.[^"]*)*)"', value_body)
-                                  if notes_match:
-                                      notes_value = notes_match.group(1)
-                                      parsed_notes = parse_mandatory_notes(notes_value)
+                                                      feature_flags.append({
+                                                          "resource_name": setting_name,
+                                                          "key": key,
+                                                          "name": name,
+                                                          "environment": env,
+                                                          "value_resource": value_name,
+                                                          "mandatory_notes": parsed_notes,
+                                                          "raw_notes": notes_value
+                                                      })
+                                                  else:
+                                                      print(f"DEBUG: No mandatory_notes found in {value_name}")
+                                                      feature_flags.append({
+                                                          "resource_name": setting_name,
+                                                          "key": key,
+                                                          "name": name,
+                                                          "environment": env,
+                                                          "value_resource": value_name,
+                                                          "mandatory_notes": None,
+                                                          "raw_notes": None
+                                                      })
 
-                                      feature_flags.append({
-                                          "resource_name": setting_name,
-                                          "key": key,
-                                          "name": name,
-                                          "environment": env,
-                                          "value_resource": value_name,
-                                          "mandatory_notes": parsed_notes,
-                                          "raw_notes": notes_value
-                                      })
-                                  else:
-                                      feature_flags.append({
-                                          "resource_name": setting_name,
-                                          "key": key,
-                                          "name": name,
-                                          "environment": env,
-                                          "value_resource": value_name,
-                                          "mandatory_notes": None,
-                                          "raw_notes": None
-                                      })
-
-                          # If no values found, still add the setting
-                          if not any(ff["resource_name"] == setting_name for ff in feature_flags):
-                              feature_flags.append({
-                                  "resource_name": setting_name,
-                                  "key": key,
-                                  "name": name,
-                                  "environment": "No environment values found",
-                                  "value_resource": None,
-                                  "mandatory_notes": None,
-                                  "raw_notes": None
-                              })
+                                      if not found_values:
+                                          print(f"DEBUG: No value resources found for {setting_name}")
+                                          feature_flags.append({
+                                              "resource_name": setting_name,
+                                              "key": key,
+                                              "name": name,
+                                              "environment": "No environment values found",
+                                              "value_resource": None,
+                                              "mandatory_notes": None,
+                                              "raw_notes": None
+                                          })
 
                   return feature_flags
 
               except Exception as e:
+                  print(f"DEBUG: Exception occurred: {e}")
                   return [{"error": f"Failed to parse file {file_path}: {e}"}]
 
           def main():
