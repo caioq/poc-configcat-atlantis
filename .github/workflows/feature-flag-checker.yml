@@ -2,13 +2,14 @@ name: Feature Flag Resource Checker
 
 on:
   push:
-    # branches:
-    #   - main
-    #   - master
-    #   - develop
     paths:
       - "**/*.tf"
       - "**/*.tfvars"
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.tfvars"
+  workflow_dispatch:
 
 jobs:
   check-feature-flags:
