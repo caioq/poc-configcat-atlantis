@@ -73,13 +73,34 @@ jobs:
                   with open(file_path, 'r') as f:
                       content = f.read()
 
-                  # Find all configcat_setting resources
-                  setting_pattern = r'resource\s+"configcat_setting"\s+"([^"]+)"\s*\{([^}]+)\}'
-                  setting_matches = re.findall(setting_pattern, content, re.DOTALL)
+                  def find_matching_brace(text, start_pos):
+                      """Find the matching closing brace for an opening brace"""
+                      brace_count = 0
+                      i = start_pos
+                      while i < len(text):
+                          if text[i] == '{':
+                              brace_count += 1
+                          elif text[i] == '}':
+                              brace_count -= 1
+                              if brace_count == 0:
+                                  return i
+                          i += 1
+                      return -1
 
+                  # Find all configcat_setting resources
+                  setting_pattern = r'resource\s+"configcat_setting"\s+"([^"]+)"\s*\{'
                   feature_flags = []
 
-                  for setting_name, setting_body in setting_matches:
+                  for setting_match in re.finditer(setting_pattern, content):
+                      setting_name = setting_match.group(1)
+                      start_pos = setting_match.end() - 1  # Position of opening brace
+                      end_pos = find_matching_brace(content, start_pos)
+
+                      if end_pos == -1:
+                          continue
+
+                      setting_body = content[setting_match.end():end_pos]
+
                       # Check if it's a boolean feature flag
                       if 'setting_type = "boolean"' in setting_body:
                           # Look for the key and name
@@ -90,18 +111,26 @@ jobs:
                           name = name_match.group(1) if name_match else "Unknown"
 
                           # Find corresponding setting_value_v2 resources
-                          value_pattern = r'resource\s+"configcat_setting_value_v2"\s+"([^"]+)"\s*\{([^}]+)\}'
-                          value_matches = re.findall(value_pattern, content, re.DOTALL)
+                          value_pattern = r'resource\s+"configcat_setting_value_v2"\s+"([^"]+)"\s*\{'
 
-                          for value_name, value_body in value_matches:
+                          for value_match in re.finditer(value_pattern, content):
+                              value_name = value_match.group(1)
+                              value_start_pos = value_match.end() - 1  # Position of opening brace
+                              value_end_pos = find_matching_brace(content, value_start_pos)
+
+                              if value_end_pos == -1:
+                                  continue
+
+                              value_body = content[value_match.end():value_end_pos]
+
                               # Check if this value belongs to our setting
                               if f'setting_id = configcat_setting.{setting_name}.id' in value_body:
                                   # Extract environment info
-                                  env_match = re.search(r'environment_id\s*=\s*([^,\s]+)', value_body)
-                                  env = env_match.group(1) if env_match else "Unknown"
+                                  env_match = re.search(r'environment_id\s*=\s*([^\n]+)', value_body)
+                                  env = env_match.group(1).strip() if env_match else "Unknown"
 
                                   # Extract mandatory_notes
-                                  notes_match = re.search(r'mandatory_notes\s*=\s*"([^"]+)"', value_body)
+                                  notes_match = re.search(r'mandatory_notes\s*=\s*"([^"]*(?:\\.[^"]*)*)"', value_body)
                                   if notes_match:
                                       notes_value = notes_match.group(1)
                                       parsed_notes = parse_mandatory_notes(notes_value)
@@ -111,6 +140,7 @@ jobs:
                                           "key": key,
                                           "name": name,
                                           "environment": env,
+                                          "value_resource": value_name,
                                           "mandatory_notes": parsed_notes,
                                           "raw_notes": notes_value
                                       })
@@ -120,6 +150,7 @@ jobs:
                                           "key": key,
                                           "name": name,
                                           "environment": env,
+                                          "value_resource": value_name,
                                           "mandatory_notes": None,
                                           "raw_notes": None
                                       })
@@ -131,6 +162,7 @@ jobs:
                                   "key": key,
                                   "name": name,
                                   "environment": "No environment values found",
+                                  "value_resource": None,
                                   "mandatory_notes": None,
                                   "raw_notes": None
                               })
@@ -161,6 +193,8 @@ jobs:
                       print(f"   Key: {ff['key']}")
                       print(f"   Name: {ff['name']}")
                       print(f"   Environment: {ff['environment']}")
+                      if ff.get('value_resource'):
+                          print(f"   Value Resource: {ff['value_resource']}")
 
                       if ff['mandatory_notes']:
                           if 'error' in ff['mandatory_notes']:
