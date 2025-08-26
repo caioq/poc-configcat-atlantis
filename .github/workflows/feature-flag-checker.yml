@@ -113,15 +113,21 @@ jobs:
                                       key = key_match.group(1) if key_match else "Unknown"
                                       name = name_match.group(1) if name_match else "Unknown"
 
-                                      # Now find corresponding value resources
+                                                                            # Now find corresponding value resources
                                       found_values = False
-                                      for value_resource in resources:
+                                      print(f"DEBUG: Looking for value resources among {len(resources)} total resources")
+                                      for i, value_resource in enumerate(resources):
                                           if value_resource.startswith('configcat_setting_value_v2"'):
+                                              print(f"DEBUG: Found configcat_setting_value_v2 resource #{i}")
+                                              print(f"DEBUG: First line: {value_resource.split(chr(10))[0] if value_resource else 'EMPTY'}")
                                               value_lines = value_resource.split('\n')
                                               value_body = '\n'.join(value_lines)
+                                              print(f"DEBUG: Checking value resource body for setting_id")
+                                              print(f"DEBUG: Looking for: setting_id = configcat_setting.{setting_name}.id")
+                                              print(f"DEBUG: Value body preview: {value_body[:200]}...")
 
                                               # Check if this belongs to our setting
-                                              if f'setting_id = configcat_setting.{setting_name}.id' in value_body:
+                                              if f'setting_id     = configcat_setting.{setting_name}.id' in value_body or f'setting_id = configcat_setting.{setting_name}.id' in value_body:
                                                   found_values = True
                                                   print(f"DEBUG: Found matching value resource for {setting_name}")
 
