@@ -2,10 +2,10 @@ name: Feature Flag Resource Checker
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - develop
+    # branches:
+    #   - main
+    #   - master
+    #   - develop
     paths:
       - "**/*.tf"
       - "**/*.tfvars"
