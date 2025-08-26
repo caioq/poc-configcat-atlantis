@@ -1,0 +1,229 @@
+name: Extract ConfigCat Feature Flag Metadata
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_id:
+        description: "ConfigCat Product ID"
+        required: true
+        default: "08ddc62b-f5b3-46de-86fb-342d26c74a4d"
+      config_id:
+        description: "ConfigCat Config ID"
+        required: true
+        default: "08ddd116-c60d-4fb3-8eca-6b46df96c21c"
+      environment_id:
+        description: "ConfigCat Environment ID"
+        required: true
+        default: "08ddc62c-0cc2-43e7-8f61-400953081bfe"
+  schedule:
+    # Run daily at 2 AM UTC to check for expired flags
+    - cron: "0 2 * * *"
+
+jobs:
+  extract-metadata:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install requests jq
+
+      - name: Extract ConfigCat Metadata
+        env:
+          CONFIGCAT_BASIC_AUTH_USERNAME: ${{ secrets.CONFIGCAT_BASIC_AUTH_USERNAME }}
+          CONFIGCAT_BASIC_AUTH_PASSWORD: ${{ secrets.CONFIGCAT_BASIC_AUTH_PASSWORD }}
+          PRODUCT_ID: ${{ github.event.inputs.product_id || '08ddc62b-f5b3-46de-86fb-342d26c74a4d' }}
+          CONFIG_ID: ${{ github.event.inputs.config_id || '08ddd116-c60d-4fb3-8eca-6b46df96c21c' }}
+          ENVIRONMENT_ID: ${{ github.event.inputs.environment_id || '08ddc62c-0cc2-43e7-8f61-400953081bfe' }}
+        run: |
+          python -c "
+          import requests
+          import json
+          import re
+          from datetime import datetime
+          import os
+
+          # ConfigCat API credentials
+          username = os.environ['CONFIGCAT_BASIC_AUTH_USERNAME']
+          password = os.environ['CONFIGCAT_BASIC_AUTH_PASSWORD']
+          product_id = os.environ['PRODUCT_ID']
+          config_id = os.environ['CONFIG_ID']
+          environment_id = os.environ['ENVIRONMENT_ID']
+
+          # API endpoints
+          base_url = 'https://api.configcat.com/v1'
+
+          # Get all settings in the config
+          settings_url = f'{base_url}/products/{product_id}/configs/{config_id}/settings'
+          settings_response = requests.get(settings_url, auth=(username, password))
+          settings_response.raise_for_status()
+          settings = settings_response.json()
+
+          print('🔍 Analyzing ConfigCat Feature Flags...')
+          print('=' * 60)
+
+          metadata_flags = []
+          expired_flags = []
+          active_flags = []
+
+          for setting in settings:
+              setting_id = setting['settingId']
+              setting_key = setting['key']
+              setting_name = setting['name']
+              setting_type = setting['settingType']
+
+              # Get setting value for this environment
+              value_url = f'{base_url}/products/{product_id}/configs/{config_id}/settings/{setting_id}/values/{environment_id}'
+              try:
+                  value_response = requests.get(value_url, auth=(username, password))
+                  if value_response.status_code == 200:
+                      value_data = value_response.json()
+                      mandatory_notes = value_data.get('mandatoryNotes', '')
+
+                      # Extract metadata from mandatory_notes
+                      metadata_match = re.search(r'METADATA:\s*(\{.*?\})', mandatory_notes)
+                      if metadata_match:
+                          try:
+                              metadata = json.loads(metadata_match.group(1))
+                              metadata_flags.append({
+                                  'key': setting_key,
+                                  'name': setting_name,
+                                  'type': setting_type,
+                                  'metadata': metadata
+                              })
+
+                              # Check expiry_date
+                              expiry_date = metadata.get('expiry_date')
+                              if expiry_date:
+                                  try:
+                                      expiry_datetime = datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
+                                      current_datetime = datetime.now(expiry_datetime.tzinfo)
+
+                                      if current_datetime > expiry_datetime:
+                                          expired_flags.append({
+                                              'key': setting_key,
+                                              'name': setting_name,
+                                              'expiry_date': expiry_date,
+                                              'status': 'EXPIRED'
+                                          })
+                                      else:
+                                          days_until_expiry = (expiry_datetime - current_datetime).days
+                                          active_flags.append({
+                                              'key': setting_key,
+                                              'name': setting_name,
+                                              'expiry_date': expiry_date,
+                                              'days_until_expiry': days_until_expiry,
+                                              'status': 'ACTIVE'
+                                          })
+                                  except ValueError as e:
+                                      print(f'⚠️  Invalid expiry_date format for {setting_key}: {expiry_date}')
+
+                              # Check active status
+                              active_status = metadata.get('active')
+                              if active_status is not None:
+                                  status_text = 'ENABLED' if active_status else 'DISABLED'
+                                  print(f'📊 {setting_key}: {status_text} (active: {active_status})')
+
+                          except json.JSONDecodeError as e:
+                              print(f'⚠️  Invalid JSON in metadata for {setting_key}: {e}')
+
+              except requests.RequestException as e:
+                  print(f'⚠️  Error fetching value for {setting_key}: {e}')
+
+          # Print summary
+          print(f'\\n📋 Metadata Summary:')
+          print(f'   Total flags with metadata: {len(metadata_flags)}')
+          print(f'   Expired flags: {len(expired_flags)}')
+          print(f'   Active flags: {len(active_flags)}')
+
+          # Print expired flags
+          if expired_flags:
+              print(f'\\n🚨 EXPIRED FEATURE FLAGS:')
+              for flag in expired_flags:
+                  print(f'   ❌ {flag["key"]} ({flag["name"]}) - Expired: {flag["expiry_date"]}')
+
+          # Print active flags
+          if active_flags:
+              print(f'\\n✅ ACTIVE FEATURE FLAGS:')
+              for flag in active_flags:
+                  print(f'   ✅ {flag["key"]} ({flag["name"]}) - Expires: {flag["expiry_date"]} (in {flag["days_until_expiry"]} days)')
+
+          # Print all metadata
+          if metadata_flags:
+              print(f'\\n📊 ALL METADATA:')
+              for flag in metadata_flags:
+                  print(f'   🔑 {flag["key"]} ({flag["name"]})')
+                  print(f'      Type: {flag["type"]}')
+                  print(f'      Metadata: {json.dumps(flag["metadata"], indent=6)}')
+                  print()
+
+          # Set output variables for other jobs
+          with open('metadata_summary.json', 'w') as f:
+              json.dump({
+                  'total_metadata_flags': len(metadata_flags),
+                  'expired_flags': expired_flags,
+                  'active_flags': active_flags,
+                  'all_metadata': metadata_flags
+              }, f, indent=2)
+
+          # Set GitHub output variables
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'expired_count={len(expired_flags)}\\n')
+              f.write(f'active_count={len(active_flags)}\\n')
+              f.write(f'total_metadata={len(metadata_flags)}\\n')
+          "
+
+      - name: Upload metadata summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: configcat-metadata-summary
+          path: metadata_summary.json
+
+      - name: Check for expired flags
+        if: steps.extract-metadata.outputs.expired_count > 0
+        run: |
+          echo "🚨 Found ${{ steps.extract-metadata.outputs.expired_count }} expired feature flags!"
+          echo "Check the metadata summary artifact for details."
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const metadata = JSON.parse(fs.readFileSync('metadata_summary.json', 'utf8'));
+
+            let comment = '## 🔍 ConfigCat Feature Flag Metadata Analysis\n\n';
+            comment += `**Total flags with metadata:** ${metadata.total_metadata_flags}\n`;
+            comment += `**Active flags:** ${metadata.active_flags.length}\n`;
+            comment += `**Expired flags:** ${metadata.expired_flags.length}\n\n`;
+
+            if (metadata.expired_flags.length > 0) {
+              comment += '### 🚨 Expired Feature Flags\n';
+              metadata.expired_flags.forEach(flag => {
+                comment += `- \`${flag.key}\` (${flag.name}) - Expired: ${flag.expiry_date}\n`;
+              });
+              comment += '\n';
+            }
+
+            if (metadata.active_flags.length > 0) {
+              comment += '### ✅ Active Feature Flags\n';
+              metadata.active_flags.forEach(flag => {
+                comment += `- \`${flag.key}\` (${flag.name}) - Expires: ${flag.expiry_date} (in ${flag.days_until_expiry} days)\n`;
+              });
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

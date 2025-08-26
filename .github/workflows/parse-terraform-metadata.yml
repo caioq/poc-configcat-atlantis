@@ -1,0 +1,208 @@
+name: Parse Terraform Feature Flag Metadata
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Every Monday at 9 AM
+  workflow_dispatch: # Manual trigger
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.tfvars"
+    types: [opened, synchronize, reopened]
+
+jobs:
+  parse-metadata:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install hcl2  # For parsing Terraform files
+
+      - name: Parse Terraform Metadata
+        id: parse
+        run: |
+          python -c "
+          import json
+          import re
+          import glob
+          import os
+          from pathlib import Path
+
+          def parse_terraform_files():
+              metadata_flags = []
+              all_flags = []
+
+              # Find all .tf files
+              tf_files = glob.glob('**/*.tf', recursive=True)
+
+              for tf_file in tf_files:
+                  print(f'📁 Parsing: {tf_file}')
+
+                  try:
+                      with open(tf_file, 'r', encoding='utf-8') as f:
+                          content = f.read()
+
+                      # Parse configcat_setting resources
+                      setting_pattern = r'resource\s+"configcat_setting"\s+"([^"]+)"\s*\{([^}]+)\}'
+                      settings = re.findall(setting_pattern, content, re.DOTALL)
+
+                      for setting_name, setting_content in settings:
+                          # Extract key information
+                          key_match = re.search(r'key\s*=\s*"([^"]+)"', setting_content)
+                          name_match = re.search(r'name\s*=\s*"([^"]+)"', setting_content)
+                          type_match = re.search(r'setting_type\s*=\s*"([^"]+)"', setting_content)
+                          hint_match = re.search(r'hint\s*=\s*"([^"]+)"', setting_content)
+                          notes_match = re.search(r'mandatory_notes\s*=\s*"([^"]+)"', setting_content)
+
+                          if key_match:
+                              key = key_match.group(1)
+                              name = name_match.group(1) if name_match else 'N/A'
+                              setting_type = type_match.group(1) if type_match else 'N/A'
+                              hint = hint_match.group(1) if hint_match else ''
+                              notes = notes_match.group(1) if notes_match else ''
+
+                              flag_info = {
+                                  'file': tf_file,
+                                  'resource_name': setting_name,
+                                  'key': key,
+                                  'name': name,
+                                  'type': setting_type,
+                                  'hint': hint,
+                                  'notes': notes
+                              }
+
+                              all_flags.append(flag_info)
+
+                              # Check for metadata in notes
+                              if 'METADATA:' in notes:
+                                  metadata_match = re.search(r'METADATA:\s*(\{.*?\})', notes)
+                                  if metadata_match:
+                                      try:
+                                          metadata = json.loads(metadata_match.group(1))
+                                          flag_info['metadata'] = metadata
+                                          metadata_flags.append(flag_info)
+                                          print(f'  ✅ Found metadata in {key}: {metadata}')
+                                      except json.JSONDecodeError as e:
+                                          print(f'  ⚠️  Invalid JSON in metadata for {key}: {e}')
+                              elif hint:
+                                  # Check hint for metadata
+                                  hint_metadata_match = re.search(r'METADATA:\s*(\{.*?\})', hint)
+                                  if hint_metadata_match:
+                                      try:
+                                          metadata = json.loads(hint_metadata_match.group(1))
+                                          flag_info['metadata'] = metadata
+                                          metadata_flags.append(flag_info)
+                                          print(f'  ✅ Found metadata in hint for {key}: {metadata}')
+                                      except json.JSONDecodeError as e:
+                                          print(f'  ⚠️  Invalid JSON in hint for {key}: {e}')
+
+                  except Exception as e:
+                      print(f'  ❌ Error parsing {tf_file}: {e}')
+
+              return metadata_flags, all_flags
+
+          # Parse files
+          metadata_flags, all_flags = parse_terraform_files()
+
+          # Output results
+          print(f'\\n📊 Summary:')
+          print(f'  Total feature flags found: {len(all_flags)}')
+          print(f'  Flags with metadata: {len(metadata_flags)}')
+
+          # Set outputs
+          print(f'::set-output name=total_flags::{len(all_flags)}')
+          print(f'::set-output name=metadata_flags::{len(metadata_flags)}')
+
+          # Save detailed results
+          with open('feature_flags_analysis.json', 'w') as f:
+              json.dump({
+                  'summary': {
+                      'total_flags': len(all_flags),
+                      'metadata_flags': len(metadata_flags),
+                      'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+                  },
+                  'all_flags': all_flags,
+                  'metadata_flags': metadata_flags
+              }, f, indent=2)
+
+          # Generate markdown report
+          with open('feature_flags_report.md', 'w') as f:
+              f.write('# Feature Flags Analysis Report\\n\\n')
+              f.write(f'**Generated:** $(date -u +%Y-%m-%dT%H:%M:%SZ)\\n\\n')
+              f.write(f'**Total Flags:** {len(all_flags)}\\n')
+              f.write(f'**Flags with Metadata:** {len(metadata_flags)}\\n\\n')
+
+              if metadata_flags:
+                  f.write('## Flags with Metadata\\n\\n')
+                  for flag in metadata_flags:
+                      f.write(f'### {flag[\"key\"]}\\n')
+                      f.write(f'- **Name:** {flag[\"name\"]}\\n')
+                      f.write(f'- **Type:** {flag[\"type\"]}\\n')
+                      f.write(f'- **File:** {flag[\"file\"]}\\n')
+                      f.write(f'- **Metadata:** ```json\\n{json.dumps(flag[\"metadata\"], indent=2)}\\n```\\n\\n')
+              else:
+                  f.write('## No Metadata Found\\n\\nNo feature flags with metadata were found.\\n\\n')
+
+              f.write('## All Feature Flags\\n\\n')
+              for flag in all_flags:
+                  f.write(f'- **{flag[\"key\"]}** ({flag[\"type\"]}) - {flag[\"name\"]}\\n')
+
+          print('📄 Reports generated:')
+          print('  - feature_flags_analysis.json')
+          print('  - feature_flags_report.md')
+          "
+
+      - name: Upload Analysis Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-flags-analysis
+          path: |
+            feature_flags_analysis.json
+            feature_flags_report.md
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            try {
+              const analysis = JSON.parse(fs.readFileSync('feature_flags_analysis.json', 'utf8'));
+
+              let comment = `## 🚩 Feature Flags Analysis\n\n`;
+              comment += `**Total Flags Found:** ${analysis.summary.total_flags}\n`;
+              comment += `**Flags with Metadata:** ${analysis.summary.metadata_flags}\n\n`;
+
+              if (analysis.metadata_flags.length > 0) {
+                comment += `### 📋 Flags with Metadata:\n\n`;
+                analysis.metadata_flags.forEach(flag => {
+                  comment += `- **${flag.key}** (${flag.type})\n`;
+                  comment += `  - Name: ${flag.name}\n`;
+                  comment += `  - File: ${flag.file}\n`;
+                  comment += `  - Metadata: \`\`\`json\n${JSON.stringify(flag.metadata, null, 2)}\n\`\`\`\n\n`;
+                });
+              } else {
+                comment += `### ℹ️ No metadata found\n\nNo feature flags with metadata were detected in this PR.`;
+              }
+
+              comment += `\n\n---\n*Generated by Terraform Metadata Parser*`;
+
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (error) {
+              console.error('Error creating comment:', error);
+            }
