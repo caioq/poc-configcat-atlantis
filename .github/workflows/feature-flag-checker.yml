@@ -90,7 +90,7 @@ jobs:
                           name = name_match.group(1) if name_match else "Unknown"
 
                           # Find corresponding setting_value_v2 resources
-                          value_pattern = rf'resource\s+"configcat_setting_value_v2"\s+"([^"]+)"\s*\{([^}]+)\}'
+                          value_pattern = r'resource\s+"configcat_setting_value_v2"\s+"([^"]+)"\s*\{([^}]+)\}'
                           value_matches = re.findall(value_pattern, content, re.DOTALL)
 
                           for value_name, value_body in value_matches:
