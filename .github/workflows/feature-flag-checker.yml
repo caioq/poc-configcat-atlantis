@@ -140,11 +140,11 @@ jobs:
                                                   env_match = re.search(r'environment_id\s*=\s*([^\n]+)', value_body)
                                                   env = env_match.group(1).strip() if env_match else "Unknown"
 
-                                                  # Extract mandatory_notes
-                                                  notes_match = re.search(r'mandatory_notes\s*=\s*"([^"]*(?:\\.[^"]*)*)"', value_body)
+                                                  # Extract mandatory_notes - handle escaped quotes in JSON
+                                                  notes_match = re.search(r'mandatory_notes\s*=\s*"((?:[^"\\]|\\.)*)"', value_body, re.DOTALL)
                                                   if notes_match:
                                                       notes_value = notes_match.group(1)
-                                                      print(f"DEBUG: Found mandatory_notes: {notes_value}")
+                                                      print(f"DEBUG: Found mandatory_notes (length {len(notes_value)}): {notes_value}")
                                                       parsed_notes = parse_mandatory_notes(notes_value)
 
                                                       feature_flags.append({
