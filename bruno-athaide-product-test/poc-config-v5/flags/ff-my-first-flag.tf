@@ -1,6 +1,6 @@
 # Create a simple boolean feature flag
 resource "configcat_setting" "my_first_flag" {
-  config_id    = configcat_config.my_config.id
+  config_id    = var.config_id
   key          = "MyFirstFlag"
   name         = "My First Flag"
   order        = 0
@@ -33,5 +33,4 @@ resource "configcat_setting_value_v2" "my_first_flag_value_staging" {
   setting_id     = configcat_setting.my_first_flag.id
 
   value = { bool_value = false }
-
 }
