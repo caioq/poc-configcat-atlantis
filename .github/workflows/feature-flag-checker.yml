@@ -1,0 +1,243 @@
+name: Feature Flag Resource Checker
+
+on:
+  push:
+    paths:
+      - "**/*.tf"
+      - "**/*.tfvars"
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.tfvars"
+  workflow_dispatch:
+
+jobs:
+  check-feature-flags:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch full history to compare changes
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install terraform-parser
+
+      - name: Check for new feature flag resources
+        id: check-ff
+        run: |
+          echo "Checking for new feature flag resources..."
+
+          # Get the list of changed .tf files
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep '\.tf$' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No .tf files changed in this commit"
+            exit 0
+          fi
+
+          echo "Changed .tf files:"
+          echo "$CHANGED_FILES"
+
+          # Create a Python script to parse the Terraform files
+          cat > parse_terraform.py << 'EOF'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          def parse_mandatory_notes(notes_string):
+              """Parse the mandatory_notes JSON string and return parsed values"""
+              try:
+                  # Remove the outer quotes and escape characters
+                  cleaned_notes = notes_string.strip().strip('"')
+                  # Parse the JSON
+                  parsed = json.loads(cleaned_notes)
+                  return parsed
+              except json.JSONDecodeError as e:
+                  return {"error": f"Failed to parse JSON: {e}", "raw_value": notes_string}
+              except Exception as e:
+                  return {"error": f"Unexpected error: {e}", "raw_value": notes_string}
+
+          def extract_feature_flags(file_path):
+              """Extract feature flag resources and their mandatory_notes from a Terraform file"""
+              try:
+                  with open(file_path, 'r') as f:
+                      content = f.read()
+
+                  print(f"DEBUG: File content length: {len(content)}")
+
+                  # Find all configcat_setting resources
+                  setting_pattern = r'resource\s+"configcat_setting"\s+"([^"]+)"'
+                  setting_matches = re.findall(setting_pattern, content)
+                  print(f"DEBUG: Found {len(setting_matches)} configcat_setting resources: {setting_matches}")
+
+                  # Find all configcat_setting_value_v2 resources
+                  value_pattern = r'resource\s+"configcat_setting_value_v2"\s+"([^"]+)"'
+                  value_matches = re.findall(value_pattern, content)
+                  print(f"DEBUG: Found {len(value_matches)} configcat_setting_value_v2 resources: {value_matches}")
+
+                  feature_flags = []
+
+                  # Simple approach - split by resource blocks
+                  resources = content.split('resource "')
+
+                  for resource in resources:
+                      if resource.startswith('configcat_setting"'):
+                          lines = resource.split('\n')
+                          if len(lines) > 0:
+                              # Extract resource name from first line
+                              first_line = lines[0]
+                              name_match = re.search(r'configcat_setting"\s+"([^"]+)"', first_line)
+                              if name_match:
+                                  setting_name = name_match.group(1)
+                                  print(f"DEBUG: Processing setting: {setting_name}")
+
+                                  # Check if it's boolean
+                                  resource_body = '\n'.join(lines)
+                                  if 'setting_type = "boolean"' in resource_body:
+                                      print(f"DEBUG: {setting_name} is a boolean feature flag")
+
+                                      # Extract key and name
+                                      key_match = re.search(r'key\s*=\s*"([^"]+)"', resource_body)
+                                      name_match = re.search(r'name\s*=\s*"([^"]+)"', resource_body)
+
+                                      key = key_match.group(1) if key_match else "Unknown"
+                                      name = name_match.group(1) if name_match else "Unknown"
+
+                                                                            # Now find corresponding value resources
+                                      found_values = False
+                                      print(f"DEBUG: Looking for value resources among {len(resources)} total resources")
+                                      for i, value_resource in enumerate(resources):
+                                          if value_resource.startswith('configcat_setting_value_v2"'):
+                                              print(f"DEBUG: Found configcat_setting_value_v2 resource #{i}")
+                                              print(f"DEBUG: First line: {value_resource.split(chr(10))[0] if value_resource else 'EMPTY'}")
+                                              value_lines = value_resource.split('\n')
+                                              value_body = '\n'.join(value_lines)
+                                              print(f"DEBUG: Checking value resource body for setting_id")
+                                              print(f"DEBUG: Looking for: setting_id = configcat_setting.{setting_name}.id")
+                                              print(f"DEBUG: Value body preview: {value_body[:200]}...")
+
+                                              # Check if this belongs to our setting
+                                              if f'setting_id     = configcat_setting.{setting_name}.id' in value_body or f'setting_id = configcat_setting.{setting_name}.id' in value_body:
+                                                  found_values = True
+                                                  print(f"DEBUG: Found matching value resource for {setting_name}")
+
+                                                  # Extract value resource name
+                                                  value_first_line = value_lines[0] if value_lines else ""
+                                                  value_name_match = re.search(r'configcat_setting_value_v2"\s+"([^"]+)"', value_first_line)
+                                                  value_name = value_name_match.group(1) if value_name_match else "Unknown"
+
+                                                  # Extract environment
+                                                  env_match = re.search(r'environment_id\s*=\s*([^\n]+)', value_body)
+                                                  env = env_match.group(1).strip() if env_match else "Unknown"
+
+                                                  # Extract mandatory_notes - handle escaped quotes in JSON
+                                                  notes_match = re.search(r'mandatory_notes\s*=\s*"((?:[^"\\]|\\.)*)"', value_body, re.DOTALL)
+                                                  if notes_match:
+                                                      notes_value = notes_match.group(1)
+                                                      print(f"DEBUG: Found mandatory_notes (length {len(notes_value)}): {notes_value}")
+                                                      parsed_notes = parse_mandatory_notes(notes_value)
+
+                                                      feature_flags.append({
+                                                          "resource_name": setting_name,
+                                                          "key": key,
+                                                          "name": name,
+                                                          "environment": env,
+                                                          "value_resource": value_name,
+                                                          "mandatory_notes": parsed_notes,
+                                                          "raw_notes": notes_value
+                                                      })
+                                                  else:
+                                                      print(f"DEBUG: No mandatory_notes found in {value_name}")
+                                                      feature_flags.append({
+                                                          "resource_name": setting_name,
+                                                          "key": key,
+                                                          "name": name,
+                                                          "environment": env,
+                                                          "value_resource": value_name,
+                                                          "mandatory_notes": None,
+                                                          "raw_notes": None
+                                                      })
+
+                                      if not found_values:
+                                          print(f"DEBUG: No value resources found for {setting_name}")
+                                          feature_flags.append({
+                                              "resource_name": setting_name,
+                                              "key": key,
+                                              "name": name,
+                                              "environment": "No environment values found",
+                                              "value_resource": None,
+                                              "mandatory_notes": None,
+                                              "raw_notes": None
+                                          })
+
+                  return feature_flags
+
+              except Exception as e:
+                  print(f"DEBUG: Exception occurred: {e}")
+                  return [{"error": f"Failed to parse file {file_path}: {e}"}]
+
+          def main():
+              if len(sys.argv) < 2:
+                  print("Usage: python parse_terraform.py <file_path>")
+                  sys.exit(1)
+
+              file_path = sys.argv[1]
+              if not Path(file_path).exists():
+                  print(f"File {file_path} does not exist")
+                  sys.exit(1)
+
+              feature_flags = extract_feature_flags(file_path)
+
+              if feature_flags:
+                  print(f"\nFound {len(feature_flags)} feature flag resource(s) in {file_path}:")
+                  print("=" * 80)
+
+                  for i, ff in enumerate(feature_flags, 1):
+                      print(f"\n{i}. Resource: {ff['resource_name']}")
+                      print(f"   Key: {ff['key']}")
+                      print(f"   Name: {ff['name']}")
+                      print(f"   Environment: {ff['environment']}")
+                      if ff.get('value_resource'):
+                          print(f"   Value Resource: {ff['value_resource']}")
+
+                      if ff['mandatory_notes']:
+                          if 'error' in ff['mandatory_notes']:
+                              print(f"   Mandatory Notes (Error): {ff['mandatory_notes']['error']}")
+                              print(f"   Raw Value: {ff['raw_notes']}")
+                          else:
+                              print("   Mandatory Notes:")
+                              for key, value in ff['mandatory_notes'].items():
+                                  print(f"     {key}: {value}")
+                      else:
+                          print("   Mandatory Notes: None")
+
+                      print("-" * 40)
+              else:
+                  print(f"No feature flag resources found in {file_path}")
+
+          if __name__ == "__main__":
+              main()
+          EOF
+
+          # Process each changed .tf file
+          for file in $CHANGED_FILES; do
+              if [ -f "$file" ]; then
+                  echo "Processing file: $file"
+                  python parse_terraform.py "$file"
+              fi
+          done
+
+      - name: Summary
+        run: |
+          echo "Feature flag resource check completed!"
+          echo "Check the logs above for details about any new feature flag resources."
