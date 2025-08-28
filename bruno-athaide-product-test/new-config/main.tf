@@ -10,7 +10,7 @@ terraform {
 
 # Local values for config v5
 locals {
-  config_name = "POC Config v5"
+  config_name = "New Config"
 }
 
 # Reference the shared module to get the product name

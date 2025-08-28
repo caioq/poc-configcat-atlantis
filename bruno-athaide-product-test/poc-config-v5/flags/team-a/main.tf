@@ -7,6 +7,27 @@ terraform {
   }
 }
 
+# Input variables for the flags module
+variable "config_id" {
+  description = "The ConfigCat config ID from the parent configuration"
+  type        = string
+}
+
+variable "configcat_basic_auth_username" {
+  description = "ConfigCat Basic Auth Username"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "configcat_basic_auth_password" {
+  description = "ConfigCat Basic Auth Password"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+
 provider "configcat" {
   # Use environment variables directly
   basic_auth_username = var.configcat_basic_auth_username != "" ? var.configcat_basic_auth_username : null
