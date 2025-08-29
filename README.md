@@ -9,6 +9,11 @@ export CONFIGCAT_BASIC_AUTH_USERNAME="your_username"
 export CONFIGCAT_BASIC_AUTH_PASSWORD="your_api_key"
 ```
 
+```bash
+export TF_VAR_configcat_basic_auth_username=="your_username"
+export TF_VAR_configcat_basic_auth_password="your_api_key"
+```
+
 ### 2. Navigate to Atlantis Directory
 
 ```bash
