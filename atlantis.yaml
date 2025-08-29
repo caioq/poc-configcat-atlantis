@@ -1,0 +1,17 @@
+version: 3
+projects:
+  - dir: new-product-test
+    workflow: terraform
+    autoplan:
+      enabled: true
+      when_modified: ["*.tf"]
+
+workflows:
+  terraform:
+    plan:
+      steps:
+        - run: terraform init -input=false
+        - run: terraform plan -input=false -out=plan.tfplan
+    apply:
+      steps:
+        - run: terraform apply -input=false plan.tfplan
