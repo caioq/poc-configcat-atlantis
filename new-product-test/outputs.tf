@@ -3,7 +3,7 @@
 # =============================================================================
 
 output "product_name" {
-  description = "The product name from product configurations"
+  description = "The product name from product configuration"
   value       = local.product_name
 }
 
