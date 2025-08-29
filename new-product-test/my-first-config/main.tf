@@ -35,4 +35,12 @@ resource "configcat_config" "my_config" {
   evaluation_version = "v2"
 }
 
-# NEW FLAGS ARE ADDED HERE
+# FLAGS
+module "my-flags" {
+  source = "./flags"
+
+  config_id = configcat_config.my_config.id
+  prod_environment_id = var.prod_environment_id
+  forno_environment_id = var.forno_environment_id
+  staging_environment_id = var.staging_environment_id
+}

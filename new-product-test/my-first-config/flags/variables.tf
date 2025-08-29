@@ -4,6 +4,21 @@ variable "config_id" {
   type        = string
 }
 
+variable "prod_environment_id" {
+  description = "The ConfigCat prod environment ID"
+  type        = string
+}
+
+variable "forno_environment_id" {
+  description = "The ConfigCat forno environment ID"
+  type        = string
+}
+
+variable "staging_environment_id" {
+  description = "The ConfigCat staging environment ID"
+  type        = string
+}
+
 variable "configcat_basic_auth_username" {
   description = "ConfigCat Basic Auth Username"
   type        = string
