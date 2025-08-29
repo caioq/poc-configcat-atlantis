@@ -1,6 +1,6 @@
 # INPUT VARIABLES
 variable "config_id" {
-  description = "The ConfigCat config ID from the parent configuration"
+  description = "The ConfigCat config ID from the parent configuration/"
   type        = string
 }
 
