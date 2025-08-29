@@ -1,7 +1,7 @@
 # =============================================================================
-# CONFIG MODULE
+# FLAGS MODULE
 # =============================================================================
-# This module contains config configuration values
+# This module contains flags configuration values
 # =============================================================================
 
 terraform {
@@ -19,20 +19,3 @@ provider "configcat" {
   basic_auth_username = var.configcat_basic_auth_username != "" ? var.configcat_basic_auth_username : null
   basic_auth_password = var.configcat_basic_auth_password != "" ? var.configcat_basic_auth_password : null
 }
-
-# LOCAL VALUES
-locals {
-  config_name = "My First Config"
-}
-
-# RESOURCES
-# Create the config
-resource "configcat_config" "my_config" {
-  product_id = var.product_id
-  name = local.config_name
-  description = "My First Config Description"
-  order = 0
-  evaluation_version = "v2"
-}
-
-# NEW FLAGS ARE ADDED HERE
